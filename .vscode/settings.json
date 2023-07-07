@@ -7,6 +7,8 @@
   "idf.flashType": "UART",
   "idf.portWin": "COM8",
   "files.associations": {
-    "*.tcc": "c"
+    "*.tcc": "c",
+    "freertos.h": "c",
+    "task.h": "c"
   }
 }

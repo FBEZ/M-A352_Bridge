@@ -48,7 +48,7 @@
 #define M_A352_DEF_H_
 
 #include <stdio.h>
-#include "M-A352_config.h"
+#include "M_A352_config.h"
 
 #ifdef EPSON_SELF_TEST_DELAY
 #undef EPSON_SELF_TEST_DELAY

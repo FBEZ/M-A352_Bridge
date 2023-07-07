@@ -6,37 +6,38 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "M-A352.h"
+#include "driver/gpio.h"
+#include "M_A352.h"
 
 #define CONFIG_UART_NUM UART_NUM_2
 #define CONFIG_TX_IO 5
 #define CONFIG_RX_IO 18
+#define CONFIG_GPIO_PIN GPIO_NUM_21
 
 void app_main(void)
 {
 
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-    };
-    // Configure UART parameters
-    ESP_ERROR_CHECK(uart_param_config(CONFIG_UART_NUM, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(CONFIG_UART_NUM, CONFIG_TX_IO, CONFIG_RX_IO, -1, -1));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, 1024, 1024, 0, NULL, 0));
+    M_A352_t* handle = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,-1,-1);
+    printf("handle tx gpio %d\n",handle->tx_pin);
+    M_A352__begin(handle);
 
-    uint8_t test_str[] = {0x01, 0x02};
-    uint32_t delay = 174;
-    while (1) {
-        printf("About to write\n");
-        uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
+    gpio_set_direction(CONFIG_GPIO_PIN, GPIO_MODE_OUTPUT);
+    uint32_t delay = 197;
+    while(1){
+        gpio_set_level(CONFIG_GPIO_PIN,0);
         delayMicroseconds(delay);
-        uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        gpio_set_level(CONFIG_GPIO_PIN,1);
+        vTaskDelay(1);
     }
+
+ 
+    // while (1) {
+    //     printf("About to write\n");
+    //     uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
+    //     delayMicroseconds(delay);
+    //     uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
+    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // }
 
     printf("Ciao mondo\n");
 
