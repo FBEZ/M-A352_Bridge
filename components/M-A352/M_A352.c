@@ -67,6 +67,53 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
 
 
 /**
+ * @brief Write an 8 bit register
+ * 
+ * @param ma352 M_A352 handle pointer
+ * @param window_id register window id
+ * @param address register address
+ * @param value value to be written
+ * @param verbose if true, outputs the register value (to be removed)
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__writeRegister8Byte(M_A352_t* ma352, uint8_t window_id, uint8_t address, uint8_t value, bool verbose) {
+
+    uint8_t xmtVal[3];
+
+    // Send the window command & win ID
+    xmtVal[0] = ADDR_WIN_CTRL|0x80;  // msb is set 1b for register write
+    xmtVal[1] = window_id;
+    xmtVal[2] = DELIMITER;
+    uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+    uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+    // Delay between commands
+    EpsonStall();
+
+    // Send the write register command & address
+    xmtVal[0] = address|0x80;  // msb is set 1b for register write
+    xmtVal[1] = value;
+    xmtVal[2] = DELIMITER;
+    uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+    uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+    // Delay between commands
+    EpsonStall();
+
+    // TODO handle with a debug flag
+    if (verbose) {
+            printf("REG[0x");
+            printf("%x",(address&0x7F));
+            printf(" W(");
+            printf("%d",window_id);
+            printf(")");
+            printf("] > 0x");
+            printf("%04X\n",(unsigned int)(value));
+        }
+
+    return ESP_OK;
+}
+
+
+/**
  * @brief Reads a 16 byte register from the M_A352
  * 
  * @param ma352 M_A352 handle
@@ -169,6 +216,21 @@ esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id){
     return ret_err;
 }
 
+
+esp_err_t M_A352__gotoToSamplingMode(M_A352_t* ma352) {
+    M_A352__writeRegister8Byte(ma352, CMD_WINDOW0, ADDR_MODE_CTRL_HI, CMD_BEGIN_SAMPLING,false);
+    return ESP_OK;
+}
+
+
+esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352) {
+    M_A352__writeRegister8Byte(ma352, CMD_WINDOW0, ADDR_MODE_CTRL_HI, CMD_END_SAMPLING,false);
+    return ESP_OK;
+}
+
+esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value) {
+    return M_A352__readRegister16Bytes(ma352, return_value ,CMD_WINDOW1, ADDR_VERSION, false);
+}
 
 esp_err_t delayMicroseconds(uint32_t us)
 {

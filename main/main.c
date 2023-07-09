@@ -20,9 +20,13 @@
 void app_main(void)
 {
 
-    M_A352_t* handle = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,CONFIG_RST_IO,-1);
-    ESP_ERROR_CHECK(M_A352__begin(handle));
+    M_A352_t* ma352 = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,CONFIG_RST_IO,-1);
+    ESP_ERROR_CHECK(M_A352__begin(ma352));
     printf("Init complete\n");
+    
+    uint16_t version =0;
+    M_A352__getFirmwareVersion(ma352, &version);
+    printf("firmware version: %d\n", version);
 
     while(1){
         vTaskDelay(1);

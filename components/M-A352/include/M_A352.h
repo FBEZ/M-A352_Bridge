@@ -45,6 +45,32 @@ esp_err_t M_A352__begin(M_A352_t* ma352);
 esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id);
 
 /**
+ * @brief Puts the M-A352 into sampling mode
+ * 
+ * @param ma352 M_A352 handle pointer
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__gotoToSamplingMode(M_A352_t* ma352);
+
+/**
+ * @brief Puts the M-A352 into configuration mode
+ * 
+ * @param ma352 M_A352 handle pointer
+ * @return esp_err_t 
+ */
+
+esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352);
+
+/**
+ * @brief Return the firmware version: MUST be in configuration mode 
+ * 
+ * @param ma352 M_A352 handle pointer
+ * @param return_value firmware version result
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value);
+
+/**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly
  * 
  * @param us 
