@@ -263,7 +263,6 @@ const uint8_t DELIMITER =           0x0D;          // EOL marker
 #define BURST_STALL                 70             // Microseconds, minumum delay after initial BURST read command
 #define EPSON_SWRESET_DELAY         800000         // Microseconds, minimum delay after software reset
 #define EPSON_POWER_ON_DELAY        800000         // Microseconds, max delay for poweron startup completion
-#define EPSON_SELF_TEST_DELAY       150000         // Microseconds, max delay for self-test completion (80ms is common for most IMUs, 150ms is for G370)
 #define EPSON_FLASH_TEST_DELAY      5000           // Microseconds, max delay for flash-test completion
 #define EPSON_FILTER_DELAY          1000           // Microseconds, max delay for filter setup completion
 #define EPSON_NRESET_LOW_DELAY      100000         // Microseconds, min delay for nRESET assertion

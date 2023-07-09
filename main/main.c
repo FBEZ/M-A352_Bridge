@@ -12,21 +12,17 @@
 #define CONFIG_UART_NUM UART_NUM_2
 #define CONFIG_TX_IO 5
 #define CONFIG_RX_IO 18
-#define CONFIG_GPIO_PIN GPIO_NUM_21
+#define CONFIG_RST_IO 21
+//#define CONFIG_GPIO_PIN GPIO_NUM_21
 
 void app_main(void)
 {
 
-    M_A352_t* handle = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,-1,-1);
+    M_A352_t* handle = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,CONFIG_RST_IO,-1);
     printf("handle tx gpio %d\n",handle->tx_pin);
     M_A352__begin(handle);
 
-    gpio_set_direction(CONFIG_GPIO_PIN, GPIO_MODE_OUTPUT);
-    uint32_t delay = 197;
     while(1){
-        gpio_set_level(CONFIG_GPIO_PIN,0);
-        delayMicroseconds(delay);
-        gpio_set_level(CONFIG_GPIO_PIN,1);
         vTaskDelay(1);
     }
 

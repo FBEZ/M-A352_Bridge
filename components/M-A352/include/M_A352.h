@@ -5,6 +5,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 
+
 typedef struct{
  uint8_t tx_pin;
  uint8_t rx_pin;
@@ -33,6 +34,15 @@ M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, uint8_
  * @return esp_err_t 
  */
 esp_err_t M_A352__begin(M_A352_t* ma352);
+
+/**
+ * @brief Return product ID as stored in the sensor - used as check
+ * 
+ * @param ma352 ma352 handle
+ * @param product_id pointer where to return the string
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id);
 
 /**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly
