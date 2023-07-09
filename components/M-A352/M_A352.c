@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 //#include "esp_err.h"
 #include <esp_timer.h>
 #include "M_A352.h"
@@ -43,6 +44,16 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
     M_A352__HWReset(ma352);
     ESP_LOGI(TAG,"Sensor reset");
 
+    char* model_name = malloc(9);
+    M_A352__getProductID(ma352,model_name);
+
+    //printf("Model name: %s\n", model_name);
+    if(strcmp(model_name, "A352AD10")==0){
+        return ESP_OK;
+    }
+    else{
+        return ESP_ERR_INVALID_RESPONSE;
+    }
     // uint8_t test_str[] = {0x01, 0x02, 0x55};
     // while (1) {
     //     printf("About to write\n");
@@ -101,6 +112,11 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
     if ((retByte[0] != (address&0x7f)) || (retByte[3] != DELIMITER)) {
         return ESP_ERR_INVALID_RESPONSE;
     }
+    printf("Chiamata:*********************\n");
+    printf("retByte[0]: 0x%02X\n",retByte[0]);
+    printf("retByte[1]: 0x%02X\n",retByte[1]);
+    printf("retByte[2]: 0x%02X\n",retByte[2]);
+    printf("retByte[3]: 0x%02X\n",retByte[3]);
 
     *return_value = (uint16_t)(retByte[1]<<8) | (retByte[2]);
 
@@ -110,9 +126,9 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
             printf("%x",(address&0x7F));
             printf(" W(");
             printf("%d",window_id);
-            printf(")\n");
+            printf(")");
             printf("] > 0x");
-            printf("%x\n",(unsigned int)return_value);
+            printf("%04X\n",(unsigned int)(*return_value));
         }
 
     
@@ -145,16 +161,17 @@ esp_err_t M_A352__HWReset(M_A352_t* ma352){
 }
 
 esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id){
-    uint8_t i;
+    uint8_t i =0;
     uint16_t return_value = 0;
+    esp_err_t ret_err=ESP_OK;
     //read model name from registers, stored as ascii values
-    for (i = 0; i < 8; i = i + 2) {
-        ESP_ERROR_CHECK(M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_PROD_ID1 + i, false));
+    for (i=0;i<8;i=i+2){
+        ret_err = M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_PROD_ID1 + i, true);
         product_id[i] = (char) (return_value & 0xFF);
         product_id[i + 1] = (char) (return_value>>8);
     }
     product_id[i] = 0x00;  // add NULL terminator to make it a string
-    return ESP_OK;
+    return ret_err;
 }
 
 

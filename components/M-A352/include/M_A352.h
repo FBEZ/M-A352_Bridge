@@ -39,7 +39,7 @@ esp_err_t M_A352__begin(M_A352_t* ma352);
  * @brief Return product ID as stored in the sensor - used as check
  * 
  * @param ma352 ma352 handle
- * @param product_id pointer where to return the string
+ * @param product_id pointer where to return the string (size: 9)
  * @return esp_err_t 
  */
 esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id);

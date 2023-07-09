@@ -5,7 +5,7 @@
     "board/esp32-bridge.cfg"
   ],
   "idf.flashType": "UART",
-  "idf.portWin": "COM8",
+  "idf.portWin": "COM7",
   "files.associations": {
     "*.tcc": "c",
     "freertos.h": "c",
