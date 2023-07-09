@@ -28,6 +28,18 @@ void app_main(void)
     M_A352__getFirmwareVersion(ma352, &version);
     printf("firmware version: %d\n", version);
 
+    M_A352__gotoToSamplingMode(ma352);
+    
+    const uint8_t burst_length = 128;
+    uint16_t sample_values[burst_length];
+    M_A352__readBurst(ma352,sample_values,burst_length);
+
+    uint8_t k = 0;
+    for(k=0;k<burst_length;k++){
+        printf("%d : %02X\n", k%23, sample_values[k]);
+    }
+
+
     while(1){
         vTaskDelay(1);
     }

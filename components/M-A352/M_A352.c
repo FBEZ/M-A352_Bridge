@@ -37,6 +37,8 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
     ESP_ERROR_CHECK(uart_set_pin(ma352->uart_num, ma352->tx_pin, ma352->rx_pin, -1, -1));
     ESP_ERROR_CHECK(uart_driver_install(ma352->uart_num, 1024, 1024, 0, NULL, 0));
     
+    // TODO: check UART_AUTO status
+
     // Configure RST pin
     gpio_set_direction(ma352->rst_pin, GPIO_MODE_OUTPUT);
     gpio_set_level(ma352->rst_pin, 1);
@@ -219,6 +221,8 @@ esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id){
 
 esp_err_t M_A352__gotoToSamplingMode(M_A352_t* ma352) {
     M_A352__writeRegister8Byte(ma352, CMD_WINDOW0, ADDR_MODE_CTRL_HI, CMD_BEGIN_SAMPLING,false);
+    delayMicroseconds(2000); // // TO-DO - If this delay is removed, it
+                                // does not reliably enter sampling mode
     return ESP_OK;
 }
 
@@ -231,6 +235,96 @@ esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352) {
 esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value) {
     return M_A352__readRegister16Bytes(ma352, return_value ,CMD_WINDOW1, ADDR_VERSION, false);
 }
+
+esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut, uint8_t address, uint8_t read_length, uint32_t retries_max_count) {
+
+    uint8_t retByte[128];  // Burst length should never exceed 128 bytes
+    uint8_t readByteLength = (read_length * 2) + 2;  // (16-bit length * 2) + header byte + delimiter byte
+    uint8_t j = 0;
+    uint32_t retryCount = 0;
+
+    // If DRDY is used then assume UART manual mode, and send a burst command every sample
+    if (ma352->drdy_pin != -1) {
+        uint8_t xmtVal[3];
+        // Setup read burst command
+        xmtVal[0] = address;     // This should be the BURST COMMAND (0x20 for V340 or 0x80 for others)
+        xmtVal[1] = 0x00;
+        xmtVal[2] = DELIMITER;
+        uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+        uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+
+        // delay after 1st command
+        EpsonBurstStall();
+    }
+
+    // Wait for buffer to fill to 1 complete burst or return false on exceeding max retries
+    int len_read = uart_read_bytes(ma352->uart_num, retByte, readByteLength, retries_max_count / portTICK_PERIOD_MS);
+    
+    if(len_read<readByteLength){
+        return ESP_ERR_TIMEOUT;
+    }
+    // do {
+    //   retryCount++;
+    //   delayMicroseconds(100);
+    //   if (retryCount > retries_max_count) {
+    //     return ESP_ERR_TIMEOUT;
+    //   }
+    // } while (SerialEpson.available() < readByteLength);
+
+    // Read UART and store into byte array
+    //int bytesRead = SerialEpson.readBytes(retByte, readByteLength);
+
+    // Return false if # of bytes is incorrect
+    // if (bytesRead != readByteLength) {
+    //     SerialConsole.print("Incorrect bytes read:");
+    //     SerialConsole.println(bytesRead, DEC);
+    //     findDelimiter();     // read sensor Rx buffer until finds DELIMITER
+    //     return false;
+    // }
+    // Return false if first byte & last byte is incorrect
+    if ((retByte[0] != (address)) || (retByte[readByteLength - 1] != DELIMITER)) {
+        printf("Unexpected read response:");
+        for(int i=0; i<readByteLength; i++) {
+            printf("%02X",retByte[i]);
+            printf(", ");
+        }
+        printf("\n");
+       //findDelimiter();     // read sensor Rx buffer until finds DELIMITER
+        return ESP_ERR_TIMEOUT;
+    }
+
+    // Parse UART read byte array to 16-bit output array
+    for (int i = 1; i < (readByteLength-1); i = i+2) {
+        arrayOut[j] = retByte[i]<<8 | retByte[i+1];
+        j++;
+    }
+    return ESP_OK;
+}
+
+
+esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array, uint8_t burst_length) {
+
+    const uint32_t retries = 10000;
+    
+    // if burst count flag is nonzero, overwrite len parameter
+    //TODO!!!!!!!!!!!!!!!!!
+    //if (_burstCnt_calculated)
+    //    len = _burstCnt_calculated>>1;
+
+    // if DRDY is used then wait for DRDY = HIGH
+    //if (ma352->drdy_pin != -1)
+    //    while (!waitDataReady(true, 100000));
+
+    // Read burst sensor data
+    esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, burst_length, retries);
+
+    // if DRDY is used then wait for DRDY = LOW
+    // if (_drdy != -1)
+    //     while (!waitDataReady(false, 1000));
+
+    return retval;
+}
+
 
 esp_err_t delayMicroseconds(uint32_t us)
 {

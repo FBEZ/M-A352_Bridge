@@ -70,6 +70,17 @@ esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352);
  */
 esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value);
 
+
+/**
+ * @brief Reads a burst 
+ * 
+ * @param ma352 M_A352 handle pointer
+ * @param return_array 
+ * @param burst_length
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array, uint8_t burst_length);
+
 /**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly
  * 
