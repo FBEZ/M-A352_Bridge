@@ -21,7 +21,6 @@ void app_main(void)
 {
 
     M_A352_t* handle = M_A352__create(CONFIG_TX_IO, CONFIG_RX_IO,CONFIG_UART_NUM,CONFIG_RST_IO,-1);
-    printf("handle tx gpio %d\n",handle->tx_pin);
     ESP_ERROR_CHECK(M_A352__begin(handle));
     printf("Init complete\n");
 

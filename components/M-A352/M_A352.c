@@ -112,11 +112,6 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
     if ((retByte[0] != (address&0x7f)) || (retByte[3] != DELIMITER)) {
         return ESP_ERR_INVALID_RESPONSE;
     }
-    printf("Chiamata:*********************\n");
-    printf("retByte[0]: 0x%02X\n",retByte[0]);
-    printf("retByte[1]: 0x%02X\n",retByte[1]);
-    printf("retByte[2]: 0x%02X\n",retByte[2]);
-    printf("retByte[3]: 0x%02X\n",retByte[3]);
 
     *return_value = (uint16_t)(retByte[1]<<8) | (retByte[2]);
 
@@ -150,7 +145,7 @@ esp_err_t M_A352__HWReset(M_A352_t* ma352){
     
     // Check NOT_READY bit = 0
     uint16_t return_value= 0;
-    ESP_ERROR_CHECK(M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_GLOB_CMD_LO, true));
+    ESP_ERROR_CHECK(M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_GLOB_CMD_LO, false));
     if ((return_value & VAL_NOT_READY)== 0){
         //_burstCnt_calculated = 0;
         return ESP_OK;
@@ -166,7 +161,7 @@ esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id){
     esp_err_t ret_err=ESP_OK;
     //read model name from registers, stored as ascii values
     for (i=0;i<8;i=i+2){
-        ret_err = M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_PROD_ID1 + i, true);
+        ret_err = M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_PROD_ID1 + i, false);
         product_id[i] = (char) (return_value & 0xFF);
         product_id[i + 1] = (char) (return_value>>8);
     }
