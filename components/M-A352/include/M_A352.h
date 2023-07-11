@@ -4,7 +4,20 @@
 #include "esp_err.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "M_A352_definitions.h"
 
+#define TEMP_CONV(X) (-0.0037918*(double)(X)+34.987)
+#define ACC_CONV(X)  (EPSON_ACCL_SF*((float)(X)))
+
+typedef enum{
+    TEMP   = ADDR_TEMP_LOW,
+    ACC_X  = ADDR_XACCL_LOW,
+    ACC_Y  = ADDR_YACCL_LOW,
+    ACC_Z  = ADDR_ZACCL_LOW,
+    TILT_X = ADDR_XTILT_LOW,
+    TILT_Y = ADDR_YTILT_LOW,
+    TILT_Z = ADDR_ZTILT_LOW
+}measurement_t;
 
 typedef struct{
  uint8_t tx_pin;
@@ -69,6 +82,68 @@ esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352);
  * @return esp_err_t 
  */
 esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value);
+
+
+/**
+ * @brief Reads the burst configuration
+ * 
+ * @param ma352 
+ * @param burst_config the receiving parameter for the burst register 
+ * @param sig_out the SIG_OUT register 
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__getBurstConfig(M_A352_t* ma352, uint16_t* burst_config, uint16_t* sig_out);
+
+/**
+ * @brief Get temperature
+ * 
+ * @param ma352 handle pointer
+ * @param temp_receiver 32bit temperature receiver
+ * @return esp_err_t 
+ */
+float M_A352__getTemperature(M_A352_t* ma352);
+
+/**
+ * @brief Returns acceleration of x-axis (G)
+ * 
+ * @param ma352 pointer handle
+ * @return float 
+ */
+float M_A352__getAccelerationX(M_A352_t* ma352);
+
+/**
+ * @brief Returns acceleration of y-axis (G)
+ * 
+ * @param ma352 pointer handle
+ * @return float 
+ */
+float M_A352__getAccelerationY(M_A352_t* ma352);
+/**
+ * @brief Returns acceleration of z-axis (G)
+ * 
+ * @param ma352 pointer handle
+ * @return float 
+ */
+float M_A352__getAccelerationZ(M_A352_t* ma352);
+
+/**
+ * @brief Get a single measurement (temperature, one of the accelerations or tilt)
+ * 
+ * @param ma352 pointer handle
+ * @param meas_receiver measurement receiving variable 
+ * @param meas the measurement required
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__getMeasurement(M_A352_t* ma352, u_int32_t* meas_receiver, measurement_t meas);
+
+/**
+ * @brief Read the count register
+ * 
+ * @param ma352 handle pointer
+ * @param count_receiver receving parameter for the count
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver);
 
 
 /**

@@ -30,15 +30,37 @@ void app_main(void)
 
     M_A352__gotoToSamplingMode(ma352);
     
-    const uint8_t burst_length = 128;
-    uint16_t sample_values[burst_length];
-    M_A352__readBurst(ma352,sample_values,burst_length);
+    uint16_t count = 0;
 
-    uint8_t k = 0;
-    for(k=0;k<burst_length;k++){
-        printf("%d : %02X\n", k%23, sample_values[k]);
-    }
+    M_A352__getCount(ma352, &count);
+    printf("Pre Count: %04X --  %d\n", count,count);
+    printf("Temperature getTemp: %f\n", M_A352__getTemperature(ma352));
 
+    u_int32_t acc_receiver = 0;
+    M_A352__getMeasurement(ma352, &acc_receiver, ACC_X);
+    printf("Acc X : %f\n", ACC_CONV(acc_receiver));
+    M_A352__getMeasurement(ma352, &acc_receiver, ACC_Y);
+    printf("Acc Y : %f\n", ACC_CONV(acc_receiver));
+    M_A352__getMeasurement(ma352, &acc_receiver, ACC_Z);
+    printf("Acc Z : %f\n", ACC_CONV(acc_receiver));
+
+    // const uint8_t burst_length = 50;
+    // uint16_t sample_values[burst_length];
+    // M_A352__readBurst(ma352,sample_values,burst_length);
+
+    // uint8_t k = 0;
+    // for(k=0;k<burst_length;k++){
+    //     printf("%d : %04X\n", k, sample_values[k]);
+    // }
+
+    uint16_t sig_out =0;
+    uint16_t burst_ctrl = 0;
+
+    M_A352__getBurstConfig(ma352,&burst_ctrl,&sig_out);
+    M_A352__getCount(ma352, &count);
+    printf("Post Count: %04X --  %d\n", count,count);
+    printf("BURST_CTRL: %02X\n",burst_ctrl );
+    printf("SIG_OUT: %02X\n",sig_out );
 
     while(1){
         vTaskDelay(1);

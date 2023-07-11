@@ -44,6 +44,7 @@
     ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 /**************************************************************************/
+#pragma once
 #ifndef M_A352_DEF_H_
 #define M_A352_DEF_H_
 
@@ -256,7 +257,8 @@
 
 
 
-const uint8_t DELIMITER =           0x0D;          // EOL marker
+//const uint8_t DELIMITER =           0x0D;          // EOL marker
+#define DELIMITER                   0x0D
 
 // Epson specific timing delays
 #define EPSON_STALL_DELAY           25             // Microseconds, minimum delay to wait between commands
@@ -266,7 +268,9 @@ const uint8_t DELIMITER =           0x0D;          // EOL marker
 #define EPSON_FLASH_TEST_DELAY      5000           // Microseconds, max delay for flash-test completion
 #define EPSON_FILTER_DELAY          1000           // Microseconds, max delay for filter setup completion
 #define EPSON_NRESET_LOW_DELAY      100000         // Microseconds, min delay for nRESET assertion
-const uint32_t EPSON_DRDYCHECK =    1000;          // Define max # of times to check
+
+#define EPSON_DRDYCHECK             1000
+//extern const uint32_t EPSON_DRDYCHECK =    1000;          // Define max # of times to check
 
 
 #define EpsonStall()                delayMicroseconds(EPSON_STALL_DELAY)

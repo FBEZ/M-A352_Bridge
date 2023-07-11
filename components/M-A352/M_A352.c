@@ -3,7 +3,6 @@
 //#include "esp_err.h"
 #include <esp_timer.h>
 #include "M_A352.h"
-#include "M_A352_definitions.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -236,6 +235,17 @@ esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value) {
     return M_A352__readRegister16Bytes(ma352, return_value ,CMD_WINDOW1, ADDR_VERSION, false);
 }
 
+esp_err_t M_A352__getBurstConfig(M_A352_t* ma352, uint16_t* burst_config, uint16_t* sig_out){
+    esp_err_t err_burst = M_A352__readRegister16Bytes(ma352, burst_config ,CMD_WINDOW1, ADDR_BURST_CTRL_LO, false);
+    esp_err_t err_sig_ctrl = M_A352__readRegister16Bytes(ma352, sig_out ,CMD_WINDOW1, ADDR_SIG_CTRL_LO, false);
+    if(err_burst == ESP_OK && err_sig_ctrl == ESP_OK){
+        return ESP_OK;
+    }else{
+        return ESP_ERR_TIMEOUT;
+    }    
+}
+
+
 esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut, uint8_t address, uint8_t read_length, uint32_t retries_max_count) {
 
     uint8_t retByte[128];  // Burst length should never exceed 128 bytes
@@ -244,7 +254,7 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
     uint32_t retryCount = 0;
 
     // If DRDY is used then assume UART manual mode, and send a burst command every sample
-    if (ma352->drdy_pin != -1) {
+    if (ma352->drdy_pin != 255) {
         uint8_t xmtVal[3];
         // Setup read burst command
         xmtVal[0] = address;     // This should be the BURST COMMAND (0x20 for V340 or 0x80 for others)
@@ -252,7 +262,6 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
         xmtVal[2] = DELIMITER;
         uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
         uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
-
         // delay after 1st command
         EpsonBurstStall();
     }
@@ -323,6 +332,51 @@ esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array, uint8_t bur
     //     while (!waitDataReady(false, 1000));
 
     return retval;
+}
+
+
+esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver){
+    return M_A352__readRegister16Bytes(ma352, count_receiver ,CMD_WINDOW0, ADDR_COUNT, false);
+}
+
+
+esp_err_t M_A352__getMeasurement(M_A352_t* ma352, u_int32_t* meas_receiver, measurement_t meas){
+    uint16_t temp_low = 0;
+    uint16_t temp_high = 0;
+    esp_err_t err_low = M_A352__readRegister16Bytes(ma352, &temp_low ,CMD_WINDOW0, meas, false);
+    esp_err_t err_high = M_A352__readRegister16Bytes(ma352, &temp_high ,CMD_WINDOW0, meas-2, false);
+    //printf("temp low: %04X\n", temp_low);
+    //printf("temp high: %04X\n", temp_high);
+    *meas_receiver = (temp_high<<8) | (temp_low);
+    //printf("temp tot: %ldn\n", *temp_receiver);
+    if(err_low==ESP_OK && err_high == ESP_OK){
+        return ESP_OK;
+    }else{
+        return err_low;
+    }
+}
+
+
+float M_A352__getTemperature(M_A352_t* ma352){
+    uint32_t temp_reg = 0;
+    M_A352__getMeasurement(ma352, &temp_reg, TEMP);
+    return TEMP_CONV((int32_t)temp_reg);
+}
+
+float M_A352__getAccelerationX(M_A352_t* ma352){
+    uint32_t temp_reg = 0;
+    M_A352__getMeasurement(ma352, temp_reg, ADDR_XACCL_LOW);
+    return ACC_CONV((int32_t) temp_reg);
+}
+float M_A352__getAccelerationY(M_A352_t* ma352){
+    uint32_t temp_reg = 0;
+    M_A352__getMeasurement(ma352, temp_reg, ADDR_YACCL_LOW);
+    return ACC_CONV((int32_t) temp_reg);
+}
+float M_A352__getAccelerationZ(M_A352_t* ma352){
+    uint32_t temp_reg = 0;
+    M_A352__getMeasurement(ma352, temp_reg, ADDR_ZACCL_LOW);
+    return ACC_CONV((int32_t) temp_reg);
 }
 
 
