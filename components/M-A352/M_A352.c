@@ -11,6 +11,37 @@
 
 char* TAG = "M-A352";
 esp_err_t M_A352__HWReset(M_A352_t* ma352);
+esp_err_t M_A352__setBurstFlags(M_A352_t* ma352);
+uint16_t M_A352__setMode(M_A352_t* ma352);
+
+
+ typedef struct {
+      // 0 = Off, 1 = On
+      bool nd_ea;
+      bool tempc;
+      bool acclx;
+      bool accly;
+      bool acclz;
+      bool inclx;
+      bool incly;
+      bool inclz;
+      bool count;
+      bool chksm;
+    } burst_flags_t;
+
+struct M_A352_t{
+ uint8_t tx_pin;
+ uint8_t rx_pin;
+ uint8_t uart_num;
+ uint8_t rst_pin;
+ uint8_t drdy_pin;
+ uint8_t burst_length;
+ burst_flags_t flags;
+ mode_t status_mode;
+ bool initialised;  // Device not initialized yet
+ bool uart_auto;  // UART_AUTO is disabled
+} ;
+
 
 M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, uint8_t rst_pin, uint8_t drdy_pin){
     M_A352_t* ret = (M_A352_t*) malloc(sizeof(M_A352_t));
@@ -19,6 +50,8 @@ M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, uint8_
     ret->uart_num = uart_num;
     ret->rst_pin = rst_pin;
     ret->drdy_pin = drdy_pin;
+    ret->status_mode = UNDEFINED;
+    ret->initialised = false;
     return ret;
 }
 
@@ -45,27 +78,25 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
     M_A352__HWReset(ma352);
     ESP_LOGI(TAG,"Sensor reset");
 
+    M_A352__setBurstFlags(ma352);
+
+    printf("** MODE flags: %04X\n",M_A352__setMode(ma352));
+    M_A352__gotoToConfigMode(ma352);
+    printf("** MODE flags: %04X\n",M_A352__setMode(ma352));
+
     char* model_name = malloc(9);
     M_A352__getProductID(ma352,model_name);
 
     //printf("Model name: %s\n", model_name);
     if(strcmp(model_name, "A352AD10")==0){
+        ma352->initialised = true;
         return ESP_OK;
     }
     else{
         return ESP_ERR_INVALID_RESPONSE;
     }
-    // uint8_t test_str[] = {0x01, 0x02, 0x55};
-    // while (1) {
-    //     printf("About to write\n");
-    //     uart_write_bytes(ma352->uart_num, (const uint8_t*)test_str, 3);
-    //     uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
-    //     M_A352__HWReset(ma352);
-    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    // }
     return ESP_OK;
 }
-
 
 /**
  * @brief Write an 8 bit register
@@ -79,6 +110,9 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
  */
 esp_err_t M_A352__writeRegister8Byte(M_A352_t* ma352, uint8_t window_id, uint8_t address, uint8_t value, bool verbose) {
 
+    if(ma352->status_mode==SAMPLING_MODE && (address != ADDR_MODE_CTRL_LO || address!=ADDR_GLOB_CMD_LO)){
+        return ESP_ERR_INVALID_STATE;
+    }
     uint8_t xmtVal[3];
 
     // Send the window command & win ID
@@ -220,6 +254,7 @@ esp_err_t M_A352__getProductID(M_A352_t* ma352, char* product_id){
 
 esp_err_t M_A352__gotoToSamplingMode(M_A352_t* ma352) {
     M_A352__writeRegister8Byte(ma352, CMD_WINDOW0, ADDR_MODE_CTRL_HI, CMD_BEGIN_SAMPLING,false);
+    ma352->status_mode = SAMPLING_MODE;
     delayMicroseconds(2000); // // TO-DO - If this delay is removed, it
                                 // does not reliably enter sampling mode
     return ESP_OK;
@@ -228,6 +263,7 @@ esp_err_t M_A352__gotoToSamplingMode(M_A352_t* ma352) {
 
 esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352) {
     M_A352__writeRegister8Byte(ma352, CMD_WINDOW0, ADDR_MODE_CTRL_HI, CMD_END_SAMPLING,false);
+    ma352->status_mode = CONFIGURATION_MODE;
     return ESP_OK;
 }
 
@@ -243,6 +279,43 @@ esp_err_t M_A352__getBurstConfig(M_A352_t* ma352, uint16_t* burst_config, uint16
     }else{
         return ESP_ERR_TIMEOUT;
     }    
+}
+
+/**
+ * @brief Set burst flags and burst_length
+ * 
+ * @param ma352 
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__setBurstFlags(M_A352_t* ma352){
+    uint16_t sig_ctrl = 0;
+    uint16_t burst_ctrl = 0;
+    esp_err_t ret = M_A352__readRegister16Bytes(ma352,&sig_ctrl, CMD_WINDOW1, ADDR_SIG_CTRL_LO,false);
+    M_A352__readRegister16Bytes(ma352,&burst_ctrl, CMD_WINDOW1, ADDR_BURST_CTRL_LO,false);
+
+          // burst_ctrl check
+      ma352->flags.nd_ea = (burst_ctrl&0x8000) ? 1 : 0;
+      ma352->flags.tempc = (burst_ctrl&0x4000) ? 1 : 0;
+      ma352->flags.acclx = (burst_ctrl&0x400) ? 1 : 0;
+      ma352->flags.accly = (burst_ctrl&0x200) ? 1 : 0;
+      ma352->flags.acclz = (burst_ctrl&0x100) ? 1 : 0;
+      ma352->flags.count = (burst_ctrl&0x2) ? 1 : 0;
+      ma352->flags.chksm = (burst_ctrl&0x1) ? 1 : 0;
+      // sig_ctrl check
+      ma352->flags.inclx = (sig_ctrl&0x80) ? 1 : 0;
+      ma352->flags.incly = (sig_ctrl&0x40) ? 1 : 0;
+      ma352->flags.inclz = (sig_ctrl&0x20) ? 1 : 0;
+
+      ma352->burst_length = 0;
+      if (ma352->flags.nd_ea) ma352->burst_length += 2;
+      if (ma352->flags.tempc) ma352->burst_length += 4;
+      if (ma352->flags.acclx) ma352->burst_length += 4;
+      if (ma352->flags.accly) ma352->burst_length += 4;
+      if (ma352->flags.acclz) ma352->burst_length += 4;
+      if (ma352->flags.count) ma352->burst_length += 2;
+      if (ma352->flags.chksm) ma352->burst_length += 2;
+
+      return ret;
 }
 
 
@@ -378,6 +451,143 @@ float M_A352__getAccelerationZ(M_A352_t* ma352){
     M_A352__getMeasurement(ma352, temp_reg, ADDR_ZACCL_LOW);
     return ACC_CONV((int32_t) temp_reg);
 }
+
+
+void M_A352__printSensorHeader(M_A352_t* ma352){
+
+      printf("\nSample#\t");
+      if (ma352->flags.nd_ea) {
+        printf("ND_EA\t");
+      }
+
+      if (ma352->flags.tempc) {
+        printf("TempC\t\t");
+      }
+
+      if(ma352->flags.acclx) {
+        if(ma352->flags.inclx) printf("Tilt X\t");
+        else                printf("Accl X\t");
+      }
+
+      if(ma352->flags.accly) {
+        if(ma352->flags.incly) printf("Tilt Y\t");
+        else                printf("Accl Y\t");
+      }
+
+      if(ma352->flags.acclz) {
+        if(ma352->flags.inclz) printf("Tilt Z\t");
+        else                printf("Accl Z\t");
+      }
+
+      if(ma352->flags.count) {
+        printf("Count\t");
+      }
+
+      if(ma352->flags.chksm) {
+        printf("Checksum");
+      }
+
+      printf("\n");
+}
+
+uint16_t M_A352__getMSC_CTRL(M_A352_t* ma352){
+    uint16_t return_value = 0;
+    M_A352__readRegister16Bytes(ma352,&return_value,CMD_WINDOW1,ADDR_MSC_CTRL_LO, false);
+    return return_value;
+}
+
+esp_err_t M_A352__setSamplingPins(M_A352_t* ma352, bool external_trigger_enable,bool external_trigger_polarity,bool data_ready_enable, bool data_ready_polarity){
+    uint8_t value = 0;
+    value += (data_ready_polarity       ? MSC_CTRL_DRDY_POL:0);
+    value += (data_ready_enable         ? MSC_CTRL_DRDY_SEL:0);
+    value += (external_trigger_enable   ? MSC_CTRL_EXT_SEL :0);
+    value += (external_trigger_polarity ? 0:MSC_CTRL_EXT_POL); // EXT_POL = 1 is negative logic, hence it's swapped
+    printf("Value to be set: %02X\n", value);
+    return M_A352__writeRegister8Byte(ma352,CMD_WINDOW1,ADDR_MSC_CTRL_LO,value,true);
+}
+
+//TODO!!!
+uint16_t M_A352__setMode(M_A352_t* ma352){
+    uint16_t return_value=0;
+    M_A352__readRegister16Bytes(ma352,&return_value,CMD_WINDOW0,ADDR_MODE_CTRL_LO,false);
+    return return_value;
+}
+
+
+
+ void M_A352__printSensorData(M_A352_t* ma352, uint16_t* data, uint32_t sampleCount) {
+
+      printf("%ld\t",sampleCount);
+
+      // stores the accelerometer data array index when parsing out data fields
+      int idx = 0;
+
+      // parsing of data fields applying conversion factor if applicable
+      if (ma352->flags.nd_ea) {
+        //process ND flag data
+        unsigned short ndflags = data[idx];
+        idx += 1;
+        printf("%02X\t",ndflags);
+      }
+
+      if (ma352->flags.tempc) {
+        //process temperature data
+        int32_t temp = (data[idx]<<16) | (data[idx+1]<<0);
+        float temperature = ((float)temp*EPSON_TEMP_SF) + 34.987f;
+        idx += 2;
+        printf("%6f\t",temperature);
+      }
+
+      if(ma352->flags.acclx) {
+        //process x axis data
+        float accel_x;
+        int32_t x = (data[idx]<<16) | (data[idx+1]<<0);
+        if(ma352->flags.inclx)
+          accel_x = (EPSON_TILT_SF * (float)x); //< tilt
+        else
+          accel_x = (EPSON_ACCL_SF * (float)x); //< acceleration
+        printf("%6f\t",accel_x);
+        idx += 2;
+      }
+
+      if(ma352->flags.accly) {
+        //process y axis data
+        float accel_y;
+        int32_t y = (data[idx]<<16) | (data[idx+1]<<0);
+        if(ma352->flags.incly)
+          accel_y = (EPSON_TILT_SF * (float)y); //< tilt
+        else
+          accel_y = (EPSON_ACCL_SF * (float)y); //< acceleration
+        printf("%6f\t",accel_y);
+        idx += 2;
+      }
+
+      if(ma352->flags.acclz) {
+        //process z axis data
+        float accel_z;
+        int32_t z = (data[idx]<<16) | (data[idx+1]<<0);
+        if(ma352->flags.inclz)
+          accel_z = (EPSON_TILT_SF * (float)z); //< tilt
+        else
+          accel_z = (EPSON_ACCL_SF * (float)z); //< acceleration
+        printf("%6f\t",accel_z);
+        idx += 2;
+      }
+
+      if(ma352->flags.count) {
+        //process count out data
+        printf("%d\t",data[idx]);
+        idx += 1;
+      }
+
+      if(ma352->flags.chksm) {
+        // process checksum data
+        printf("%04X\t",data[idx]);
+      }
+      printf("\n");
+}
+
+
 
 
 esp_err_t delayMicroseconds(uint32_t us)

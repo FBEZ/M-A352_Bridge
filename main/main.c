@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <sdkconfig.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -28,7 +29,20 @@ void app_main(void)
     M_A352__getFirmwareVersion(ma352, &version);
     printf("firmware version: %d\n", version);
 
+    printf("MSC_CTRL: %04X\n", M_A352__getMSC_CTRL(ma352));
+    if(M_A352__setSamplingPins(ma352,true,true,true,true)!=ESP_OK){
+        printf("ERROR");
+    }
+    printf("MSC_CTRL: %04X\n", M_A352__getMSC_CTRL(ma352));
+
     M_A352__gotoToSamplingMode(ma352);
+    if(M_A352__setSamplingPins(ma352,true,true,true,true)!=ESP_OK){
+        printf("ERROR! Sampling mode\n");
+    }
+    M_A352__gotoToConfigMode(ma352);
+    if(M_A352__setSamplingPins(ma352,true,true,true,true)!=ESP_OK){
+        printf("ERROR! Sampling mode // second\n");
+    }
     
     uint16_t count = 0;
 
@@ -44,14 +58,6 @@ void app_main(void)
     M_A352__getMeasurement(ma352, &acc_receiver, ACC_Z);
     printf("Acc Z : %f\n", ACC_CONV(acc_receiver));
 
-    // const uint8_t burst_length = 50;
-    // uint16_t sample_values[burst_length];
-    // M_A352__readBurst(ma352,sample_values,burst_length);
-
-    // uint8_t k = 0;
-    // for(k=0;k<burst_length;k++){
-    //     printf("%d : %04X\n", k, sample_values[k]);
-    // }
 
     uint16_t sig_out =0;
     uint16_t burst_ctrl = 0;
@@ -62,18 +68,15 @@ void app_main(void)
     printf("BURST_CTRL: %02X\n",burst_ctrl );
     printf("SIG_OUT: %02X\n",sig_out );
 
+    M_A352__printSensorHeader(ma352);
+
+    // const uint8_t BURST_SIZE = 64;
+    // uint16_t data[BURST_SIZE]; //(uint16_t*)malloc(BURST_SIZE*sizeof(uint16_t));
+    // M_A352__readBurst(ma352,data, 64);
+    // M_A352__printSensorData(ma352,data,1);
     while(1){
         vTaskDelay(1);
     }
-
- 
-    // while (1) {
-    //     printf("About to write\n");
-    //     uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
-    //     delayMicroseconds(delay);
-    //     uart_write_bytes(CONFIG_UART_NUM, (const uint8_t*)test_str, 2);
-    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    // }
 
     printf("Ciao mondo\n");
 
