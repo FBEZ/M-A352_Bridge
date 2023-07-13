@@ -13,9 +13,10 @@ char* TAG = "M-A352";
 esp_err_t M_A352__HWReset(M_A352_t* ma352);
 esp_err_t M_A352__setBurstFlags(M_A352_t* ma352);
 uint16_t M_A352__setMode(M_A352_t* ma352);
+bool M_A352__waitDataReady(M_A352_t* ma352, bool asserted);
 
 
- typedef struct {
+typedef struct{
       // 0 = Off, 1 = On
       bool nd_ea;
       bool tempc;
@@ -27,29 +28,40 @@ uint16_t M_A352__setMode(M_A352_t* ma352);
       bool inclz;
       bool count;
       bool chksm;
-    } burst_flags_t;
+    }  burst_flags_t;
+
+typedef struct{
+      // 0 = Off, 1 = On
+    bool external_trigger_enable;
+    bool external_trigger_polarity;
+    bool data_ready_enable;
+    bool data_ready_polarity;
+} sampling_pins_config_t;
 
 struct M_A352_t{
  uint8_t tx_pin;
  uint8_t rx_pin;
  uint8_t uart_num;
- uint8_t rst_pin;
- uint8_t drdy_pin;
+ int8_t rst_pin;
+ int8_t drdy_pin;
+ int8_t ext_pin;
  uint8_t burst_length;
  burst_flags_t flags;
+ sampling_pins_config_t sampling_pins_conf;
  mode_t status_mode;
  bool initialised;  // Device not initialized yet
  bool uart_auto;  // UART_AUTO is disabled
 } ;
 
 
-M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, uint8_t rst_pin, uint8_t drdy_pin){
+M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, int8_t rst_pin, int8_t drdy_pin, int8_t ext_pin){
     M_A352_t* ret = (M_A352_t*) malloc(sizeof(M_A352_t));
     ret->tx_pin = tx_pin;
     ret->rx_pin = rx_pin;
     ret->uart_num = uart_num;
     ret->rst_pin = rst_pin;
     ret->drdy_pin = drdy_pin;
+    ret->ext_pin = ext_pin;
     ret->status_mode = UNDEFINED;
     ret->initialised = false;
     return ret;
@@ -75,14 +87,21 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
     gpio_set_direction(ma352->rst_pin, GPIO_MODE_OUTPUT);
     gpio_set_level(ma352->rst_pin, 1);
 
+    // Configure DRDY if used
+    if(ma352->drdy_pin!=-1){
+        gpio_set_direction(ma352->drdy_pin, GPIO_MODE_INPUT);
+    }
+    // Configure External trigger if used
+    if(ma352->ext_pin!=-1){
+        gpio_set_direction(ma352->ext_pin, GPIO_MODE_INPUT);
+    }
+
     M_A352__HWReset(ma352);
     ESP_LOGI(TAG,"Sensor reset");
 
     M_A352__setBurstFlags(ma352);
 
-    printf("** MODE flags: %04X\n",M_A352__setMode(ma352));
     M_A352__gotoToConfigMode(ma352);
-    printf("** MODE flags: %04X\n",M_A352__setMode(ma352));
 
     char* model_name = malloc(9);
     M_A352__getProductID(ma352,model_name);
@@ -319,15 +338,15 @@ esp_err_t M_A352__setBurstFlags(M_A352_t* ma352){
 }
 
 
-esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut, uint8_t address, uint8_t read_length, uint32_t retries_max_count) {
+esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut, uint8_t address, uint8_t read_length) {
 
     uint8_t retByte[128];  // Burst length should never exceed 128 bytes
-    uint8_t readByteLength = (read_length * 2) + 2;  // (16-bit length * 2) + header byte + delimiter byte
-    uint8_t j = 0;
+    //uint8_t readByteLength = (read_length * 2) + 2;  // (16-bit length * 2) + header byte + delimiter byte
+    uint8_t readByteLength = ma352->burst_length+2;
     uint32_t retryCount = 0;
 
-    // If DRDY is used then assume UART manual mode, and send a burst command every sample
-    if (ma352->drdy_pin != 255) {
+    // If DRDY is used then assume UART manual mode, and send a burst command
+    if (ma352->drdy_pin != -1) {
         uint8_t xmtVal[3];
         // Setup read burst command
         xmtVal[0] = address;     // This should be the BURST COMMAND (0x20 for V340 or 0x80 for others)
@@ -340,30 +359,13 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
     }
 
     // Wait for buffer to fill to 1 complete burst or return false on exceeding max retries
-    int len_read = uart_read_bytes(ma352->uart_num, retByte, readByteLength, retries_max_count / portTICK_PERIOD_MS);
+    int len_read = uart_read_bytes(ma352->uart_num, retByte, readByteLength, 1000);
     
+    printf("Prima test lungezza: len_read %d\t readByteLength: %d\n",len_read, readByteLength);
     if(len_read<readByteLength){
         return ESP_ERR_TIMEOUT;
     }
-    // do {
-    //   retryCount++;
-    //   delayMicroseconds(100);
-    //   if (retryCount > retries_max_count) {
-    //     return ESP_ERR_TIMEOUT;
-    //   }
-    // } while (SerialEpson.available() < readByteLength);
-
-    // Read UART and store into byte array
-    //int bytesRead = SerialEpson.readBytes(retByte, readByteLength);
-
-    // Return false if # of bytes is incorrect
-    // if (bytesRead != readByteLength) {
-    //     SerialConsole.print("Incorrect bytes read:");
-    //     SerialConsole.println(bytesRead, DEC);
-    //     findDelimiter();     // read sensor Rx buffer until finds DELIMITER
-    //     return false;
-    // }
-    // Return false if first byte & last byte is incorrect
+    printf("Passato test lungezza\n");
     if ((retByte[0] != (address)) || (retByte[readByteLength - 1] != DELIMITER)) {
         printf("Unexpected read response:");
         for(int i=0; i<readByteLength; i++) {
@@ -371,11 +373,11 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
             printf(", ");
         }
         printf("\n");
-       //findDelimiter();     // read sensor Rx buffer until finds DELIMITER
         return ESP_ERR_TIMEOUT;
     }
 
     // Parse UART read byte array to 16-bit output array
+    uint8_t j = 0;
     for (int i = 1; i < (readByteLength-1); i = i+2) {
         arrayOut[j] = retByte[i]<<8 | retByte[i+1];
         j++;
@@ -384,27 +386,24 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
 }
 
 
-esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array, uint8_t burst_length) {
+esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array) {
 
-    const uint32_t retries = 10000;
-    
-    // if burst count flag is nonzero, overwrite len parameter
-    //TODO!!!!!!!!!!!!!!!!!
-    //if (_burstCnt_calculated)
-    //    len = _burstCnt_calculated>>1;
+    if (ma352->drdy_pin != -1)
+        while (!M_A352__waitDataReady(ma352,true)); //waiting for asserted dataready 
 
-    // if DRDY is used then wait for DRDY = HIGH
-    //if (ma352->drdy_pin != -1)
-    //    while (!waitDataReady(true, 100000));
-
+    printf("Passata primo data ready\n");
     // Read burst sensor data
-    esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, burst_length, retries);
-
-    // if DRDY is used then wait for DRDY = LOW
-    // if (_drdy != -1)
-    //     while (!waitDataReady(false, 1000));
-
+    esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, ma352->burst_length);
+    printf("Passata readSeqRegister data ready\n");
+    //if DRDY is used then wait for DRDY = LOW
+    //if (ma352->drdy_pin != -1)
+    //    while (!M_A352__waitDataReady(ma352,false));
+    printf("Passata secondo data ready\n");
     return retval;
+}
+
+uint16_t M_A352__getBurstLength(M_A352_t* ma352){
+    return ma352->burst_length;
 }
 
 
@@ -496,13 +495,25 @@ uint16_t M_A352__getMSC_CTRL(M_A352_t* ma352){
     return return_value;
 }
 
+uint16_t M_A352__getUART_CTRL(M_A352_t* ma352){
+    uint16_t return_value = 0;
+    M_A352__readRegister16Bytes(ma352,&return_value,CMD_WINDOW1,ADDR_UART_CTRL_LO, false);
+    return return_value;
+}
+
 esp_err_t M_A352__setSamplingPins(M_A352_t* ma352, bool external_trigger_enable,bool external_trigger_polarity,bool data_ready_enable, bool data_ready_polarity){
     uint8_t value = 0;
     value += (data_ready_polarity       ? MSC_CTRL_DRDY_POL:0);
     value += (data_ready_enable         ? MSC_CTRL_DRDY_SEL:0);
     value += (external_trigger_enable   ? MSC_CTRL_EXT_SEL :0);
     value += (external_trigger_polarity ? 0:MSC_CTRL_EXT_POL); // EXT_POL = 1 is negative logic, hence it's swapped
-    printf("Value to be set: %02X\n", value);
+    
+    // Setting internal variable
+    ma352->sampling_pins_conf.external_trigger_enable=external_trigger_enable;
+    ma352->sampling_pins_conf.external_trigger_polarity = external_trigger_polarity;
+    ma352->sampling_pins_conf.data_ready_enable = data_ready_enable;
+    ma352->sampling_pins_conf.data_ready_polarity = data_ready_polarity;
+
     return M_A352__writeRegister8Byte(ma352,CMD_WINDOW1,ADDR_MSC_CTRL_LO,value,true);
 }
 
@@ -587,8 +598,29 @@ uint16_t M_A352__setMode(M_A352_t* ma352){
       printf("\n");
 }
 
-
-
+/**
+ * @brief Waiting for data ready to be asserted (positive or negative depending on the configuration)
+ * 
+ * @param ma352 
+ * @return esp_err_t 
+ */
+bool M_A352__waitDataReady(M_A352_t* ma352, bool activated) {
+    
+    uint32_t retryCount = 0;
+    bool condition_value = (ma352->sampling_pins_conf.data_ready_polarity==activated); //asserted is true when positive polarity and false if negative polarity
+    printf("Polarita: %d\t Input: %d \t condition_value: %d\n",ma352->sampling_pins_conf.data_ready_polarity, activated,condition_value );
+    // Loop continuously to check the status of DataReady until Low or timeout
+    do {
+        retryCount++;
+        delayMicroseconds(10);     // 10 usec
+    } while ((gpio_get_level(ma352->drdy_pin)!= condition_value) & (retryCount < MAX_RETRIES_NUM));
+     printf("***************\n");
+    // return true on success, or fail for a timeout
+    if (retryCount < MAX_RETRIES_NUM)
+        return true; // success
+    else
+        return false; // fail
+}
 
 esp_err_t delayMicroseconds(uint32_t us)
 {

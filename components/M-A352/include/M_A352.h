@@ -5,6 +5,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "M_A352_definitions.h"
+#include <sdkconfig.h>
 
 
 #define MSC_CTRL_EXT_SEL  0x40
@@ -12,6 +13,7 @@
 #define MSC_CTRL_DRDY_SEL 0x04
 #define MSC_CTRL_DRDY_POL 0x02
 
+#define MAX_RETRIES_NUM 10000
 
 #define TEMP_CONV(X) (-0.0037918*(double)(X)+34.987)
 #define ACC_CONV(X)  (EPSON_ACCL_SF*((float)(X)))
@@ -43,9 +45,11 @@ typedef struct M_A352_t M_A352_t;
  * @param uart_num UART number (1 or 2 in ESP32)
  * @param rst_pin Reset pin location. -1 if it's not used
  * @param drdy_pin Data ready pin location. -1 if it's not used
+ * @param ext_pin External trigger pin location. -1 if it's not used
  * @return M_A352_t* 
  */
-M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, uint8_t rst_pin, uint8_t drdy_pin);
+M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, int8_t rst_pin, int8_t drdy_pin, int8_t ext_pin);
+
 /**
  * @brief Starts the UART connection with the previously created sensor
  * 
@@ -160,7 +164,7 @@ esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver);
  * @param burst_length
  * @return esp_err_t 
  */
-esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array, uint8_t burst_length);
+esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array);
 
 /**
  * @brief Returns the data header depending on the enabled burst flags
@@ -198,6 +202,22 @@ uint16_t M_A352__getMSC_CTRL(M_A352_t* ma352);
  * @return esp_err_t 
  */
 esp_err_t M_A352__setSamplingPins(M_A352_t* ma352, bool external_trigger_enable,bool external_trigger_polarity,bool data_ready_enable, bool data_ready_polarity);
+
+/**
+ * @brief Returns burst length, useful to prepare the return array
+ * 
+ * @param ma352 
+ * @return uint16_t 
+ */
+uint16_t M_A352__getBurstLength(M_A352_t* ma352);
+
+/**
+ * @brief Read the uart ctrl register
+ * 
+ * @param ma352 
+ * @return uint16_t 
+ */
+uint16_t M_A352__getUART_CTRL(M_A352_t* ma352);
 
 /**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly
