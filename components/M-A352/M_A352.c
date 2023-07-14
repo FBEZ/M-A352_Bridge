@@ -199,7 +199,7 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
     uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
     // Delay between commands
     EpsonStall();
-    int len_read = uart_read_bytes(ma352->uart_num, retByte, 4, 40 / portTICK_PERIOD_MS);
+    int len_read = uart_read_bytes(ma352->uart_num, retByte, 4, MAX_RETRIES_NUM);
 
     // Check that a respose has arrived
     if(len_read<4){
@@ -286,6 +286,16 @@ esp_err_t M_A352__gotoToConfigMode(M_A352_t* ma352) {
     return ESP_OK;
 }
 
+mode_t M_A352__getStatusMode(M_A352_t* ma352){
+    return ma352->status_mode;
+}
+
+uint16_t M_A352__getSMPL_CTRL(M_A352_t* ma352){
+    uint16_t ret = 0;
+    M_A352__readRegister16Bytes(ma352,&ret,CMD_WINDOW1,ADDR_SMPL_CTRL_LO,false);
+    return ret;
+}
+
 esp_err_t M_A352__getFirmwareVersion(M_A352_t* ma352, uint16_t* return_value) {
     return M_A352__readRegister16Bytes(ma352, return_value ,CMD_WINDOW1, ADDR_VERSION, false);
 }
@@ -343,10 +353,10 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
     uint8_t retByte[128];  // Burst length should never exceed 128 bytes
     //uint8_t readByteLength = (read_length * 2) + 2;  // (16-bit length * 2) + header byte + delimiter byte
     uint8_t readByteLength = ma352->burst_length+2;
-    uint32_t retryCount = 0;
 
     // If DRDY is used then assume UART manual mode, and send a burst command
     if (ma352->drdy_pin != -1) {
+        //M_A352__writeRegister8Byte(ma352,CMD_WINDOW0,CMD_BURST,0x0,false);
         uint8_t xmtVal[3];
         // Setup read burst command
         xmtVal[0] = address;     // This should be the BURST COMMAND (0x20 for V340 or 0x80 for others)
@@ -354,14 +364,14 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
         xmtVal[2] = DELIMITER;
         uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
         uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
-        // delay after 1st command
+        //delay after 1st command
         EpsonBurstStall();
     }
-
+    printf("Prima di len_read\n");
     // Wait for buffer to fill to 1 complete burst or return false on exceeding max retries
     int len_read = uart_read_bytes(ma352->uart_num, retByte, readByteLength, 1000);
     
-    printf("Prima test lungezza: len_read %d\t readByteLength: %d\n",len_read, readByteLength);
+   printf("Prima test lungezza: len_read %d\t readByteLength: %d\n",len_read, readByteLength);
     if(len_read<readByteLength){
         return ESP_ERR_TIMEOUT;
     }
@@ -372,7 +382,7 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
             printf("%02X",retByte[i]);
             printf(", ");
         }
-        printf("\n");
+       // printf("\n");
         return ESP_ERR_TIMEOUT;
     }
 
@@ -390,22 +400,132 @@ esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array) {
 
     if (ma352->drdy_pin != -1)
         while (!M_A352__waitDataReady(ma352,true)); //waiting for asserted dataready 
-
-    printf("Passata primo data ready\n");
+    printf("Asserted!\n");
     // Read burst sensor data
     esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, ma352->burst_length);
-    printf("Passata readSeqRegister data ready\n");
+    
     //if DRDY is used then wait for DRDY = LOW
-    //if (ma352->drdy_pin != -1)
+    // if (ma352->drdy_pin != -1)
     //    while (!M_A352__waitDataReady(ma352,false));
-    printf("Passata secondo data ready\n");
+    // printf("Passata secondo data ready\n");
     return retval;
+}
+
+esp_err_t M_A352__setBurstConfiguration(M_A352_t* ma352, bool flag_out, bool temp_out, bool acceleration_x_out, bool acceleration_y_out, bool acceleration_z_out, bool count_out, bool checksum_out){
+    uint8_t burst_ctrl_low = checksum_out*0x01+
+                             count_out   *0x02;
+
+    uint8_t burst_ctrl_high = acceleration_z_out*0x01+
+                              acceleration_y_out*0x02+
+                              acceleration_x_out*0x04+
+                              temp_out*          0x40+
+                              flag_out*0x80;
+
+    esp_err_t ret = M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_LO,burst_ctrl_low,true);
+    M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_HI,burst_ctrl_high,true);
+    M_A352__setBurstFlags(ma352);
+    return ret;
 }
 
 uint16_t M_A352__getBurstLength(M_A352_t* ma352){
     return ma352->burst_length;
 }
 
+
+
+measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352){
+    
+    uint16_t data [M_A352__getBurstLength(ma352)];
+    M_A352__readBurst(ma352, data);
+    measurement_set_t ret;
+
+    int idx = 0;
+
+    if (ma352->flags.nd_ea) {idx += 1;} //the nd flags are ignored
+
+    if (ma352->flags.tempc) { // if enabled temperature
+        int32_t temp = (data[idx]<<16) | (data[idx+1]<<0);
+        ret.temperature = ((float)temp*EPSON_TEMP_SF) + 34.987f;
+        idx += 2;
+    }else{
+        ret.temperature = -1.0;
+    }
+
+    if(ma352->flags.acclx) {
+        int32_t x = (data[idx]<<16) | (data[idx+1]<<0);
+        if(ma352->flags.inclx){
+          ret.tilt_x = (EPSON_TILT_SF * (float)x); //< tilt
+          ret.acceleration_x = -1.0;
+        }
+        else{
+          ret.acceleration_x = (EPSON_ACCL_SF * (float)x); //< acceleration
+          ret.tilt_x = -1.0;
+        }
+        idx += 2;
+    }else{
+        ret.acceleration_x = -1.0;
+        ret.tilt_x = -1.0;
+    }
+
+    if(ma352->flags.accly) {
+       int32_t y = (data[idx]<<16) | (data[idx+1]<<0);
+       if(ma352->flags.incly){
+         ret.tilt_y = (EPSON_TILT_SF * (float)y); //< tilt
+         ret.acceleration_y = -1.0;
+       }
+       else{
+         ret.acceleration_y = (EPSON_ACCL_SF * (float)y); //< acceleration
+         ret.tilt_y = -1.0;
+       }
+       idx += 2;
+     }else{
+        ret.acceleration_y = -1.0;
+        ret.tilt_y = -1.0;
+    }
+
+      if(ma352->flags.acclz) {
+        int32_t z = (data[idx]<<16) | (data[idx+1]<<0);
+        if(ma352->flags.inclz){
+          ret.tilt_z = (EPSON_TILT_SF * (float)z); //< tilt
+          ret.acceleration_z = -1.0;
+        }
+        else{
+          ret.acceleration_z = (EPSON_ACCL_SF * (float)z); //< acceleration
+          ret.tilt_z = -1.0;
+        }
+        idx += 2;
+      }else{
+        ret.acceleration_z = -1.0;
+        ret.tilt_z = -1.0;
+    }
+
+      if(ma352->flags.count) {
+        ret.counter = data[idx];
+        idx += 1;
+      }else{
+        ret.counter = 0;
+      }
+    //checksum not used
+    //   if(ma352->flags.chksm) {
+    //     printf("%04X\t",data[idx]);
+    //   }
+
+    return ret;
+
+}
+
+//debug only
+void M_A352__printMeasurmentSet(measurement_set_t meas){
+    printf("Temperature   : %f\n", meas.temperature);
+    printf("Acceleration X: %f\n", meas.acceleration_x);
+    printf("Acceleration Y: %f\n", meas.acceleration_y);
+    printf("Acceleration Z: %f\n", meas.acceleration_z);
+    printf("Tilt X        : %f\n", meas.tilt_x);
+    printf("Tilt Y        : %f\n", meas.tilt_y);
+    printf("Tilt Z        : %f\n", meas.tilt_z);
+    printf("Counter       : %d\n", meas.counter);
+    printf("\n");
+}
 
 esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver){
     return M_A352__readRegister16Bytes(ma352, count_receiver ,CMD_WINDOW0, ADDR_COUNT, false);
@@ -437,18 +557,18 @@ float M_A352__getTemperature(M_A352_t* ma352){
 
 float M_A352__getAccelerationX(M_A352_t* ma352){
     uint32_t temp_reg = 0;
-    M_A352__getMeasurement(ma352, temp_reg, ADDR_XACCL_LOW);
-    return ACC_CONV((int32_t) temp_reg);
+    M_A352__getMeasurement(ma352, &temp_reg, ADDR_XACCL_LOW);
+    return (float)ACC_CONV((int32_t) temp_reg);
 }
 float M_A352__getAccelerationY(M_A352_t* ma352){
     uint32_t temp_reg = 0;
-    M_A352__getMeasurement(ma352, temp_reg, ADDR_YACCL_LOW);
-    return ACC_CONV((int32_t) temp_reg);
+    M_A352__getMeasurement(ma352, &temp_reg, ADDR_YACCL_LOW);
+    return (float)ACC_CONV((int32_t) temp_reg);
 }
 float M_A352__getAccelerationZ(M_A352_t* ma352){
     uint32_t temp_reg = 0;
-    M_A352__getMeasurement(ma352, temp_reg, ADDR_ZACCL_LOW);
-    return ACC_CONV((int32_t) temp_reg);
+    M_A352__getMeasurement(ma352, &temp_reg, ADDR_ZACCL_LOW);
+    return (float)ACC_CONV((int32_t) temp_reg);
 }
 
 
@@ -608,13 +728,13 @@ bool M_A352__waitDataReady(M_A352_t* ma352, bool activated) {
     
     uint32_t retryCount = 0;
     bool condition_value = (ma352->sampling_pins_conf.data_ready_polarity==activated); //asserted is true when positive polarity and false if negative polarity
-    printf("Polarita: %d\t Input: %d \t condition_value: %d\n",ma352->sampling_pins_conf.data_ready_polarity, activated,condition_value );
+    //printf("Polarita: %d\t Input: %d \t condition_value: %d\n",ma352->sampling_pins_conf.data_ready_polarity, activated,condition_value );
     // Loop continuously to check the status of DataReady until Low or timeout
     do {
         retryCount++;
         delayMicroseconds(10);     // 10 usec
     } while ((gpio_get_level(ma352->drdy_pin)!= condition_value) & (retryCount < MAX_RETRIES_NUM));
-     printf("***************\n");
+     //printf("***************\n");
     // return true on success, or fail for a timeout
     if (retryCount < MAX_RETRIES_NUM)
         return true; // success

@@ -34,6 +34,18 @@ typedef enum{
     SAMPLING_MODE
 }status_mode_t;
 
+
+typedef struct{
+    float acceleration_x;
+    float acceleration_y;
+    float acceleration_z;
+    float tilt_x;
+    float tilt_y;
+    float tilt_z;
+    float temperature;
+    uint16_t counter;
+}measurement_set_t;
+
 typedef struct M_A352_t M_A352_t;
 
 
@@ -211,6 +223,34 @@ esp_err_t M_A352__setSamplingPins(M_A352_t* ma352, bool external_trigger_enable,
  */
 uint16_t M_A352__getBurstLength(M_A352_t* ma352);
 
+
+/**
+ * @brief Returns a measurement set according to meas. flags
+ * 
+ * @param ma352 
+ * @return measurement_set_t 
+ */
+measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352);
+
+/**
+ * @brief Set the output measurements for the burst
+ * 
+ * @param ma352 pointer handle
+ * @param flag_out ND flag out
+ * @param temp_out  Temperature 
+ * @param acceleration_x_out acceleratrion on x axis (or tilt on x axis is configured)
+ * @param acceleration_y_out acceleratrion on y axis (or tilt on y axis is configured)
+ * @param acceleration_z_out acceleratrion on z axis (or tilt on z axis is configured)
+ * @param count_out output sampling counter (tick every 250us)
+ * @param checksum_out checksum output
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__setBurstConfiguration(M_A352_t* ma352, bool flag_out, bool temp_out, bool acceleration_x_out, bool acceleration_y_out, bool acceleration_z_out, bool count_out, bool checksum_out);
+   
+mode_t M_A352__getStatusMode(M_A352_t* ma352);
+
+void M_A352__printMeasurmentSet(measurement_set_t meas);
+
 /**
  * @brief Read the uart ctrl register
  * 
@@ -218,6 +258,16 @@ uint16_t M_A352__getBurstLength(M_A352_t* ma352);
  * @return uint16_t 
  */
 uint16_t M_A352__getUART_CTRL(M_A352_t* ma352);
+
+/**
+ * @brief Returns the register SMPL
+ * 
+ * @param ma352 
+ * @return uint16_t 
+ */
+uint16_t M_A352__getSMPL_CTRL(M_A352_t* ma352);
+
+
 
 /**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly
