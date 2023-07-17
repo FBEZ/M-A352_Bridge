@@ -14,6 +14,7 @@ esp_err_t M_A352__HWReset(M_A352_t* ma352);
 esp_err_t M_A352__setBurstFlags(M_A352_t* ma352);
 uint16_t M_A352__setMode(M_A352_t* ma352);
 bool M_A352__waitDataReady(M_A352_t* ma352, bool asserted);
+void M_A352__goToWindow(M_A352_t* ma352, uint8_t window_id);
 
 
 typedef struct{
@@ -51,6 +52,7 @@ struct M_A352_t{
  mode_t status_mode;
  bool initialised;  // Device not initialized yet
  bool uart_auto;  // UART_AUTO is disabled
+ uint8_t window_id;
 } ;
 
 
@@ -96,15 +98,17 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
         gpio_set_direction(ma352->ext_pin, GPIO_MODE_INPUT);
     }
 
-    M_A352__HWReset(ma352);
-    ESP_LOGI(TAG,"Sensor reset");
 
+    M_A352__HWReset(ma352);
+    ESP_LOGI(TAG,"Sensor reset"); 
+    M_A352__goToWindow(ma352,0); // set a define starting widow (and internal status)
     M_A352__setBurstFlags(ma352);
 
     M_A352__gotoToConfigMode(ma352);
 
     char* model_name = malloc(9);
     M_A352__getProductID(ma352,model_name);
+    
 
     //printf("Model name: %s\n", model_name);
     if(strcmp(model_name, "A352AD10")==0){
@@ -133,15 +137,18 @@ esp_err_t M_A352__writeRegister8Byte(M_A352_t* ma352, uint8_t window_id, uint8_t
         return ESP_ERR_INVALID_STATE;
     }
     uint8_t xmtVal[3];
-
-    // Send the window command & win ID
-    xmtVal[0] = ADDR_WIN_CTRL|0x80;  // msb is set 1b for register write
-    xmtVal[1] = window_id;
-    xmtVal[2] = DELIMITER;
-    uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
-    uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
-    // Delay between commands
-    EpsonStall();
+    if(window_id != ma352->window_id){
+        M_A352__goToWindow(ma352,window_id);
+        // //Send the window command & win ID
+        // xmtVal[0] = ADDR_WIN_CTRL|0x80;  // msb is set 1b for register write
+        // xmtVal[1] = window_id;
+        // xmtVal[2] = DELIMITER;
+        // uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+        // uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+        // //Delay between commands
+        EpsonStall();
+        printf("Changed Window Write! (addr: %04X)\n", address);
+    }
 
     // Send the write register command & address
     xmtVal[0] = address|0x80;  // msb is set 1b for register write
@@ -182,14 +189,18 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
     uint8_t retByte[4];
     uint8_t xmtVal[3];
 
-    // Send the window command & win ID
-    xmtVal[0] = ADDR_WIN_CTRL|0x80; // msb is set 1b for register write
-    xmtVal[1] = window_id;
-    xmtVal[2] = DELIMITER;
-    uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
-    uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
-    // Delay between commands
-    EpsonStall();
+    if(window_id!=ma352->window_id){
+        M_A352__goToWindow(ma352,window_id);
+        // // Send the window command & win ID
+        // xmtVal[0] = ADDR_WIN_CTRL|0x80; // msb is set 1b for register write
+        // xmtVal[1] = window_id;
+        // xmtVal[2] = DELIMITER;
+        // uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+        // uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+        // // Delay between commands
+        EpsonStall();
+        printf("Changed Window Read! (addr: %04X)\n", address);
+    }
 
     // Send the read register command & address
     xmtVal[0] = address&0x7f; // msb is set 0b for register read
@@ -231,6 +242,26 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
     return ESP_OK;
 }
 
+/**
+ * @brief Move to window and change internal state
+ * 
+ * @return esp_err_t 
+ */
+void M_A352__goToWindow(M_A352_t* ma352, uint8_t window_id){
+    uint8_t xmtVal[3];
+    // Send the window command & win ID
+    xmtVal[0] = ADDR_WIN_CTRL|0x80;  // msb is set 1b for register write
+    xmtVal[1] = window_id;
+    xmtVal[2] = DELIMITER;
+    uart_write_bytes(ma352->uart_num, (const uint8_t*)xmtVal, 3);
+    uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
+    
+    ma352->window_id = window_id;
+    // Delay between commands
+    EpsonStall();
+    printf("Changed Window, now: %d\n", window_id);
+    
+}
 
 /**
  * @brief Resets the sensor to start from a known state
@@ -243,7 +274,7 @@ esp_err_t M_A352__HWReset(M_A352_t* ma352){
     gpio_set_level(ma352->rst_pin, 1);
     // Wait for the sensor re-initialization
     EpsonPowerOnDelay();
-    
+    M_A352__goToWindow(ma352,1); //added because this function is called at start up and here the read register is called
     // Check NOT_READY bit = 0
     uint16_t return_value= 0;
     ESP_ERROR_CHECK(M_A352__readRegister16Bytes(ma352, &return_value, CMD_WINDOW1, ADDR_GLOB_CMD_LO, false));
@@ -353,7 +384,10 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
     uint8_t retByte[128];  // Burst length should never exceed 128 bytes
     //uint8_t readByteLength = (read_length * 2) + 2;  // (16-bit length * 2) + header byte + delimiter byte
     uint8_t readByteLength = ma352->burst_length+2;
-
+    if(ma352->window_id!=0){ // the burst command is on window 0 
+        M_A352__goToWindow(ma352,0);
+        printf("Moved to Window 0 for bust\n");
+    }
     // If DRDY is used then assume UART manual mode, and send a burst command
     if (ma352->drdy_pin != -1) {
         //M_A352__writeRegister8Byte(ma352,CMD_WINDOW0,CMD_BURST,0x0,false);
@@ -367,15 +401,15 @@ esp_err_t M_A352__readNSequentialRegisters (M_A352_t* ma352, uint16_t* arrayOut,
         //delay after 1st command
         EpsonBurstStall();
     }
-    printf("Prima di len_read\n");
+    //printf("Prima di len_read\n");
     // Wait for buffer to fill to 1 complete burst or return false on exceeding max retries
     int len_read = uart_read_bytes(ma352->uart_num, retByte, readByteLength, 1000);
     
-   printf("Prima test lungezza: len_read %d\t readByteLength: %d\n",len_read, readByteLength);
+   //printf("Prima test lungezza: len_read %d\t readByteLength: %d\n",len_read, readByteLength);
     if(len_read<readByteLength){
         return ESP_ERR_TIMEOUT;
     }
-    printf("Passato test lungezza\n");
+    //printf("Passato test lungezza\n");
     if ((retByte[0] != (address)) || (retByte[readByteLength - 1] != DELIMITER)) {
         printf("Unexpected read response:");
         for(int i=0; i<readByteLength; i++) {
