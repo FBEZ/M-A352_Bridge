@@ -9,6 +9,14 @@
   "files.associations": {
     "*.tcc": "c",
     "freertos.h": "c",
-    "task.h": "c"
+    "task.h": "c",
+    "ratio": "c",
+    "system_error": "c",
+    "array": "c",
+    "functional": "c",
+    "regex": "c",
+    "tuple": "c",
+    "type_traits": "c",
+    "utility": "c"
   }
 }

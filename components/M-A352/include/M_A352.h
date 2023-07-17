@@ -13,6 +13,10 @@
 #define MSC_CTRL_DRDY_SEL 0x04
 #define MSC_CTRL_DRDY_POL 0x02
 
+#define DEFAULT_SAMPLING_FREQUENCY SAMPLING_RATE_200
+#define DEFAULT_FILTER_FC 60
+#define DEFAULT_FILTER_TAP 512
+
 #define MAX_RETRIES_NUM 10000
 
 #define TEMP_CONV(X) (-0.0037918*(double)(X)+34.987)
@@ -34,6 +38,15 @@ typedef enum{
     SAMPLING_MODE
 }status_mode_t;
 
+typedef enum{
+    SAMPLING_RATE_1000 = 0x0200,
+    SAMPLING_RATE_500 = 0x0300,
+    SAMPLING_RATE_200 = 0x0400,
+    SAMPLING_RATE_100 = 0x0500,
+    SAMPLING_RATE_50 = 0x0600,
+    SAMPLING_RATE_UNDEFINED = 0x0000
+}sampling_rate_t;
+
 
 typedef struct{
     float acceleration_x;
@@ -45,6 +58,12 @@ typedef struct{
     float temperature;
     uint16_t counter;
 }measurement_set_t;
+
+
+typedef struct{
+    uint16_t tap;
+    uint16_t fc;
+}filter_setting_t;
 
 typedef struct M_A352_t M_A352_t;
 
@@ -265,9 +284,35 @@ uint16_t M_A352__getUART_CTRL(M_A352_t* ma352);
  * @param ma352 
  * @return uint16_t 
  */
-uint16_t M_A352__getSMPL_CTRL(M_A352_t* ma352);
+sampling_rate_t M_A352__getSMPL_CTRL(M_A352_t* ma352);
+
+/**
+ * @brief Set the sampling frequency
+ * 
+ * @param ma352 
+ * @param sampling_rate sampling frequency enum
+ * @return esp_err_t 
+ */
+
+esp_err_t M_A352__setSamplingRate(M_A352_t* ma352, sampling_rate_t sampling_rate);
 
 
+/**
+ * @brief return filter setting fc and tap
+ * 
+ * @param ma352 
+ * @return filter_setting_t 
+ */
+filter_setting_t M_A352__getFilterSetting(M_A352_t* ma352);
+
+/**
+ * @brief set filter fc and tap
+ * 
+ * @param ma352 
+ * @param filter_setting 
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__setFilterSetting(M_A352_t* ma352, filter_setting_t filter_setting);
 
 /**
  * @brief Utility function for delay because the standard one wasn't uploaded correctly

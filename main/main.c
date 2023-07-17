@@ -24,7 +24,7 @@ void app_main(void)
     ESP_ERROR_CHECK(M_A352__begin(ma352));
     printf("Init complete\n");
     
-    uint16_t version =0;
+    //uint16_t version =0;
     //M_A352__getFirmwareVersion(ma352, &version);
     //printf("firmware version: %d\n", version);
 
@@ -33,27 +33,28 @@ void app_main(void)
         printf("ERROR");
     }
    // printf("MSC_CTRL: %04X\n", M_A352__getMSC_CTRL(ma352));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__setBurstConfiguration(ma352,false,false,false,false,true,true,false));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__setBurstConfiguration(ma352,true,true,true,true,true,true,false));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__setSamplingRate(ma352, SAMPLING_RATE_1000));
     ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__gotoToSamplingMode(ma352));
     
     M_A352__printSensorHeader(ma352);
 
-    printf("UART_CTRL: %04X\n",M_A352__getUART_CTRL(ma352));
 
-    uint16_t sig_out =0;
-    uint16_t burst_ctrl = 0;
+    //uint16_t sig_out =0;
+    //uint16_t burst_ctrl = 0;
 
     //ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__getBurstConfig(ma352,&burst_ctrl,&sig_out));
     //printf("Burst config: %04X\n", burst_ctrl);
     //printf("Sig OUT: %04X\n", sig_out);
 
     //printf("Burst length: %d\n", M_A352__getBurstLength(ma352));
-    uint16_t return_array [M_A352__getBurstLength(ma352)];
+    //uint16_t return_array [M_A352__getBurstLength(ma352)];
 
     //printf("Status Mode: %04lX\n", M_A352__getStatusMode(ma352)); 
     //printf("Temperature: %f\n", M_A352__getTemperature(ma352));
     //printf("Misura: %f\n", M_A352__getAccelerationZ(ma352));
-    //printf("SMPL: %04X\n", M_A352__getSMPL_CTRL(ma352));
+
+    printf("SMPL: %04X\n", M_A352__getSMPL_CTRL(ma352));
     //ESP_ERROR_CHECK_WITHOUT_ABORT(M_A352__readBurst(ma352, return_array));
 
     M_A352__printSensorHeader(ma352);

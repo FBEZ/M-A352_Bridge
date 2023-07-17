@@ -15,7 +15,7 @@ esp_err_t M_A352__setBurstFlags(M_A352_t* ma352);
 uint16_t M_A352__setMode(M_A352_t* ma352);
 bool M_A352__waitDataReady(M_A352_t* ma352, bool asserted);
 void M_A352__goToWindow(M_A352_t* ma352, uint8_t window_id);
-
+uint16_t M_A352__readFilterSetting(M_A352_t* ma352);
 
 typedef struct{
       // 0 = Off, 1 = On
@@ -49,6 +49,8 @@ struct M_A352_t{
  uint8_t burst_length;
  burst_flags_t flags;
  sampling_pins_config_t sampling_pins_conf;
+ filter_setting_t filter_setting;
+ sampling_rate_t sampling_rate;
  mode_t status_mode;
  bool initialised;  // Device not initialized yet
  bool uart_auto;  // UART_AUTO is disabled
@@ -101,11 +103,13 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
 
     M_A352__HWReset(ma352);
     ESP_LOGI(TAG,"Sensor reset"); 
+
     M_A352__goToWindow(ma352,0); // set a define starting widow (and internal status)
+    M_A352__gotoToConfigMode(ma352); // be sure to be in confuration mode
     M_A352__setBurstFlags(ma352);
-
-    M_A352__gotoToConfigMode(ma352);
-
+    M_A352__setSamplingRate(ma352,DEFAULT_SAMPLING_FREQUENCY); //set default value and set internal variable
+    //filter_setting_t filter = {.tap = DEFAULT_FILTER_TAP, .fc = DEFAULT_FILTER_FC };
+    M_A352__setFilterSetting(ma352,(filter_setting_t){.tap = DEFAULT_FILTER_TAP, .fc = DEFAULT_FILTER_FC });
     char* model_name = malloc(9);
     M_A352__getProductID(ma352,model_name);
     
@@ -147,7 +151,7 @@ esp_err_t M_A352__writeRegister8Byte(M_A352_t* ma352, uint8_t window_id, uint8_t
         // uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
         // //Delay between commands
         EpsonStall();
-        printf("Changed Window Write! (addr: %04X)\n", address);
+        //printf("Changed Window Write! (addr: %04X)\n", address);
     }
 
     // Send the write register command & address
@@ -199,7 +203,7 @@ esp_err_t M_A352__readRegister16Bytes(M_A352_t* ma352, uint16_t* return_value, u
         // uart_wait_tx_done(ma352->uart_num, portMAX_DELAY);
         // // Delay between commands
         EpsonStall();
-        printf("Changed Window Read! (addr: %04X)\n", address);
+        //printf("Changed Window Read! (addr: %04X)\n", address);
     }
 
     // Send the read register command & address
@@ -259,7 +263,7 @@ void M_A352__goToWindow(M_A352_t* ma352, uint8_t window_id){
     ma352->window_id = window_id;
     // Delay between commands
     EpsonStall();
-    printf("Changed Window, now: %d\n", window_id);
+    //printf("Changed Window, now: %d\n", window_id);
     
 }
 
@@ -321,9 +325,28 @@ mode_t M_A352__getStatusMode(M_A352_t* ma352){
     return ma352->status_mode;
 }
 
-uint16_t M_A352__getSMPL_CTRL(M_A352_t* ma352){
-    uint16_t ret = 0;
-    M_A352__readRegister16Bytes(ma352,&ret,CMD_WINDOW1,ADDR_SMPL_CTRL_LO,false);
+sampling_rate_t M_A352__getSMPL_CTRL(M_A352_t* ma352){
+    uint16_t register_value = 0;
+    sampling_rate_t ret = SAMPLING_RATE_UNDEFINED;
+    M_A352__readRegister16Bytes(ma352,&register_value,CMD_WINDOW1,ADDR_SMPL_CTRL_LO,false);
+    ret = register_value;
+    // switch(ret){
+    //     case 0x02:
+    //         ret = SAMPLING_RATE_1000;
+    //         break;
+    //     case 0x03:
+    //         ret = SAMPLING_RATE_500;
+    //         break;
+    //     case 0x04:
+    //         ret = SAMPLING_RATE_200;
+    //         break;
+    //     case 0x05:
+    //         ret = SAMPLING_RATE_100;
+    //         break;
+    //     case 0x06:
+    //         ret = SAMPLING_RATE_50;
+    //         break;
+    // }
     return ret;
 }
 
@@ -434,7 +457,7 @@ esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array) {
 
     if (ma352->drdy_pin != -1)
         while (!M_A352__waitDataReady(ma352,true)); //waiting for asserted dataready 
-    printf("Asserted!\n");
+    //printf("Asserted!\n");
     // Read burst sensor data
     esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, ma352->burst_length);
     
@@ -455,8 +478,8 @@ esp_err_t M_A352__setBurstConfiguration(M_A352_t* ma352, bool flag_out, bool tem
                               temp_out*          0x40+
                               flag_out*0x80;
 
-    esp_err_t ret = M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_LO,burst_ctrl_low,true);
-    M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_HI,burst_ctrl_high,true);
+    esp_err_t ret = M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_LO,burst_ctrl_low,false);
+    M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_BURST_CTRL_HI,burst_ctrl_high,false);
     M_A352__setBurstFlags(ma352);
     return ret;
 }
@@ -565,6 +588,26 @@ esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver){
     return M_A352__readRegister16Bytes(ma352, count_receiver ,CMD_WINDOW0, ADDR_COUNT, false);
 }
 
+esp_err_t M_A352__setSamplingRate(M_A352_t* ma352, sampling_rate_t sampling_rate){
+    uint8_t s_rate = sampling_rate >> 8; // the sampling_rate_t is 0x0400, the last byte is always 0
+    printf("s_rate %04X\n", s_rate);
+    esp_err_t err = M_A352__writeRegister8Byte(ma352, CMD_WINDOW1, ADDR_SMPL_CTRL_HI, s_rate, true);
+    
+    sampling_rate_t check = M_A352__getSMPL_CTRL(ma352);
+    printf("check: %04X\t sampling_rate: %04X\n", check, sampling_rate);
+    if(check == sampling_rate && err == ESP_OK){
+        ma352->sampling_rate = sampling_rate;
+        return ESP_OK;
+    }else{
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    
+}
+
+
+sampling_rate_t M_A352__getSamplingRate(M_A352_t* ma352){
+    return ma352->sampling_rate;
+}
 
 esp_err_t M_A352__getMeasurement(M_A352_t* ma352, u_int32_t* meas_receiver, measurement_t meas){
     uint16_t temp_low = 0;
@@ -668,7 +711,7 @@ esp_err_t M_A352__setSamplingPins(M_A352_t* ma352, bool external_trigger_enable,
     ma352->sampling_pins_conf.data_ready_enable = data_ready_enable;
     ma352->sampling_pins_conf.data_ready_polarity = data_ready_polarity;
 
-    return M_A352__writeRegister8Byte(ma352,CMD_WINDOW1,ADDR_MSC_CTRL_LO,value,true);
+    return M_A352__writeRegister8Byte(ma352,CMD_WINDOW1,ADDR_MSC_CTRL_LO,value,false);
 }
 
 //TODO!!!
@@ -774,6 +817,73 @@ bool M_A352__waitDataReady(M_A352_t* ma352, bool activated) {
         return true; // success
     else
         return false; // fail
+}
+
+
+esp_err_t M_A352__setFilterSetting(M_A352_t* ma352, filter_setting_t filter_setting){
+    printf("FILTER: fc:%d\ttap:%d\n",filter_setting.fc, filter_setting.tap);
+    uint8_t cmd = 0;
+    if(filter_setting.tap == 64){
+
+        if(filter_setting.fc == 83){
+            cmd = CMD_FIRTAP64FC83;
+        }else if(filter_setting.fc==220){
+            cmd = CMD_FIRTAP64FC220;
+        }else{
+            return ESP_ERR_INVALID_ARG;
+        }
+
+    }else if(filter_setting.tap == 128){
+
+        if(filter_setting.fc == 110){
+            cmd = CMD_FIRTAP128FC110;
+        }else if(filter_setting.fc==350){
+            cmd = CMD_FIRTAP128FC350;
+        }else if(filter_setting.fc==36){
+            cmd = CMD_FIRTAP128FC36;
+        }else{
+            return ESP_ERR_INVALID_ARG;
+        }
+
+    }else if(filter_setting.tap==512){
+
+        if(filter_setting.fc == 9){
+            cmd = CMD_FIRTAP512FC9;
+        }else if(filter_setting.fc==16){
+            cmd = CMD_FIRTAP512FC16;
+        }else if(filter_setting.fc==60){
+            cmd = CMD_FIRTAP512FC60;
+        }else if(filter_setting.fc==210){
+            cmd = CMD_FIRTAP512FC210;
+        }else if(filter_setting.fc==460){
+            cmd = CMD_FIRTAP512FC460;
+        }else{
+            return ESP_ERR_INVALID_ARG;
+        }
+
+    }else{
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    M_A352__writeRegister8Byte(ma352,CMD_WINDOW1, ADDR_FILTER_CTRL_LO,cmd,false);
+
+    if((M_A352__readFilterSetting(ma352)& 0x0F)==cmd){ // only lower bits are useful
+        ma352->filter_setting.fc = filter_setting.fc;
+        ma352->filter_setting.tap = filter_setting.tap;
+        return ESP_OK;
+    }else{
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+}
+
+filter_setting_t M_A352__getFilterSetting(M_A352_t* ma352){
+    return ma352->filter_setting;
+}
+
+uint16_t M_A352__readFilterSetting(M_A352_t* ma352){
+    uint16_t ret = 0;
+    M_A352__readRegister16Bytes(ma352,&ret,CMD_WINDOW1,ADDR_FILTER_CTRL_LO,false);
+    return ret;
 }
 
 esp_err_t delayMicroseconds(uint32_t us)
