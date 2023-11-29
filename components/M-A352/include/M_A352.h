@@ -13,6 +13,7 @@
 #define MSC_CTRL_DRDY_SEL 0x04
 #define MSC_CTRL_DRDY_POL 0x02
 
+#define DEFAULT_BAUDRATE 460800
 #define DEFAULT_SAMPLING_FREQUENCY SAMPLING_RATE_200
 #define DEFAULT_FILTER_FC 60
 #define DEFAULT_FILTER_TAP 512
@@ -197,6 +198,16 @@ esp_err_t M_A352__getCount(M_A352_t* ma352, uint16_t* count_receiver);
  */
 esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array);
 
+
+/**
+ * @brief Read a burst after triggered by ext pin
+ * 
+ * @param ma352 
+ * @param return_array 
+ * @return esp_err_t 
+ */
+esp_err_t M_A352__readTriggeredBurst(M_A352_t* ma352, uint16_t* return_array);
+
 /**
  * @brief Returns the data header depending on the enabled burst flags
  * 
@@ -244,12 +255,13 @@ uint16_t M_A352__getBurstLength(M_A352_t* ma352);
 
 
 /**
- * @brief Returns a measurement set according to meas. flags
+ * @brief Read a measurment set according to configuration
  * 
  * @param ma352 
+ * @param triggered with ext_pin
  * @return measurement_set_t 
  */
-measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352);
+measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352, bool triggered);
 
 /**
  * @brief Set the output measurements for the burst

@@ -7,7 +7,7 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
-#define M_A352_BAUDRATE 460800
+
 
 char* TAG = "M-A352";
 esp_err_t M_A352__HWReset(M_A352_t* ma352);
@@ -73,7 +73,7 @@ M_A352_t* M_A352__create(uint8_t tx_pin,uint8_t rx_pin ,uint8_t uart_num, int8_t
 
 esp_err_t M_A352__begin(M_A352_t* ma352){
     uart_config_t uart_config = {
-        .baud_rate = M_A352_BAUDRATE,
+        .baud_rate = DEFAULT_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -81,6 +81,7 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
         .rx_flow_ctrl_thresh = 122,
     };
     // Configure UART parameters
+    printf("tx: %d\trx: %d",ma352->tx_pin,ma352->rx_pin);
     ESP_ERROR_CHECK(uart_param_config(ma352->uart_num, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(ma352->uart_num, ma352->tx_pin, ma352->rx_pin, -1, -1));
     ESP_ERROR_CHECK(uart_driver_install(ma352->uart_num, 1024, 1024, 0, NULL, 0));
@@ -94,6 +95,7 @@ esp_err_t M_A352__begin(M_A352_t* ma352){
     // Configure DRDY if used
     if(ma352->drdy_pin!=-1){
         gpio_set_direction(ma352->drdy_pin, GPIO_MODE_INPUT);
+        
     }
     // Configure External trigger if used
     if(ma352->ext_pin!=-1){
@@ -468,6 +470,23 @@ esp_err_t M_A352__readBurst(M_A352_t* ma352, uint16_t* return_array) {
     return retval;
 }
 
+esp_err_t M_A352__readTriggeredBurst(M_A352_t* ma352, uint16_t* return_array) {
+
+    if(ma352->ext_pin == -1 || ma352->drdy_pin == -1)
+        return ESP_ERR_INVALID_STATE; // you can't call it without set ext_pin and drdy_pin
+    //printf("ext_pin to:%d", ma352->sampling_pins_conf.external_trigger_polarity);
+    gpio_set_level(ma352->ext_pin, ma352->sampling_pins_conf.external_trigger_polarity);
+    gpio_set_level(ma352->ext_pin, !ma352->sampling_pins_conf.external_trigger_polarity);
+    //printf("ext_pin to:%d", !ma352->sampling_pins_conf.external_trigger_polarity);
+    while (!M_A352__waitDataReady(ma352,true)); //waiting for asserted dataready 
+    //printf("DRDY Asserted!\n");
+    
+    // Read burst sensor data
+    esp_err_t retval = M_A352__readNSequentialRegisters(ma352, return_array, CMD_BURST, ma352->burst_length);
+    
+    return retval;
+}
+
 esp_err_t M_A352__setBurstConfiguration(M_A352_t* ma352, bool flag_out, bool temp_out, bool acceleration_x_out, bool acceleration_y_out, bool acceleration_z_out, bool count_out, bool checksum_out){
     uint8_t burst_ctrl_low = checksum_out*0x01+
                              count_out   *0x02;
@@ -490,10 +509,14 @@ uint16_t M_A352__getBurstLength(M_A352_t* ma352){
 
 
 
-measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352){
+measurement_set_t M_A352__readMeasurementSet(M_A352_t* ma352, bool triggered){
     
     uint16_t data [M_A352__getBurstLength(ma352)];
-    M_A352__readBurst(ma352, data);
+    if(triggered){
+        M_A352__readTriggeredBurst(ma352,data);
+    }else{
+        M_A352__readBurst(ma352, data);
+    }
     measurement_set_t ret;
 
     int idx = 0;
@@ -603,7 +626,6 @@ esp_err_t M_A352__setSamplingRate(M_A352_t* ma352, sampling_rate_t sampling_rate
     }
     
 }
-
 
 sampling_rate_t M_A352__getSamplingRate(M_A352_t* ma352){
     return ma352->sampling_rate;
